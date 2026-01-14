@@ -2,7 +2,14 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/oryx-wat-scraper.svg)](https://pypi.org/project/oryx-wat-scraper/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/oryx-wat-scraper.svg)](https://pypi.org/project/oryx-wat-scraper/)
+[![Python versions](https://img.shields.io/pypi/pyversions/oryx-wat-scraper.svg)](https://pypi.org/project/oryx-wat-scraper/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/wat-suite/oryx-wat-scraper/workflows/CI/badge.svg)](https://github.com/wat-suite/oryx-wat-scraper/actions)
+[![codecov](https://codecov.io/gh/wat-suite/oryx-wat-scraper/branch/main/graph/badge.svg)](https://codecov.io/gh/wat-suite/oryx-wat-scraper)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![mypy](https://img.shields.io/badge/mypy-checked-blue.svg)](http://mypy-lang.org/)
+[![GitHub stars](https://img.shields.io/github/stars/wat-suite/oryx-wat-scraper.svg?style=social&label=Star)](https://github.com/wat-suite/oryx-wat-scraper)
 
 Python scraper for Oryx equipment loss data, matching the R script approach from [scrape_oryx](https://github.com/scarnecchia/scrape_oryx).
 
@@ -148,7 +155,7 @@ Main scraper class.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/oryx-wat-scraper.git
+git clone https://github.com/wat-suite/oryx-wat-scraper.git
 cd oryx-wat-scraper
 
 # Install with uv
@@ -162,26 +169,38 @@ uv run pre-commit install
 
 ```bash
 # Run all tests
-uv run pytest
+pytest
 
 # Run with coverage
-uv run pytest --cov=oryx_wat_scraper --cov-report=html
+pytest --cov=oryx_wat_scraper --cov-report=html
 
 # Run specific test file
-uv run pytest tests/test_client.py
+pytest tests/test_client.py
+```
+
+### Running CI Checks Locally
+
+You can run the same checks that CI runs locally:
+
+```bash
+# Run all checks
+black --check .
+ruff check .
+mypy oryx_wat_scraper
+pytest
 ```
 
 ### Code Quality
 
 ```bash
 # Format code
-uv run black .
+black .
 
 # Lint code
-uv run ruff check .
+ruff check .
 
 # Type check
-uv run mypy oryx_wat_scraper
+mypy oryx_wat_scraper
 ```
 
 ### Make Commands
@@ -195,28 +214,159 @@ make type-check   # Type check
 make clean        # Clean build artifacts
 ```
 
+## Releasing
+
+This project uses GitHub Releases to trigger PyPI publishing. The workflow automatically publishes to PyPI when a final (non-pre-release) GitHub Release is created.
+
+### Release Workflow
+
+#### 1. Update Version
+
+Update the version in `pyproject.toml`:
+
+```toml
+[project]
+version = "0.2.0"  # Update to your new version
+```
+
+Follow [Semantic Versioning](https://semver.org/):
+- **MAJOR** (1.0.0): Breaking changes
+- **MINOR** (0.1.0): New features, backwards compatible
+- **PATCH** (0.0.1): Bug fixes, backwards compatible
+
+#### 2. Update Changelog
+
+Update `CHANGELOG.md` with the changes for this version.
+
+#### 3. Commit and Push Changes
+
+```bash
+git add pyproject.toml CHANGELOG.md
+git commit -m "chore: bump version to 0.2.0"
+git push origin main
+```
+
+#### 4. Create a Git Tag
+
+Create a tag matching the version (with or without 'v' prefix):
+
+```bash
+# Option 1: Tag with 'v' prefix
+git tag v0.2.0
+
+# Option 2: Tag without prefix
+git tag 0.2.0
+
+# Push the tag
+git push origin v0.2.0
+```
+
+**Important:** The tag version must match the version in `pyproject.toml` exactly (excluding the 'v' prefix if used).
+
+#### 5. Create GitHub Release
+
+Go to the [GitHub Releases page](https://github.com/wat-suite/oryx-wat-scraper/releases) and click "Draft a new release":
+
+**For Pre-Release (Testing):**
+- **Tag:** Select the tag you just created (e.g., `v0.2.0`)
+- **Release title:** `v0.2.0` (or your version)
+- **Description:** Copy from `CHANGELOG.md` or write release notes
+- **☑️ Set as a pre-release:** Check this box
+- Click **"Publish release"**
+
+Pre-releases are **not** published to PyPI. Use them for testing before the final release.
+
+**For Final Release (Publishing to PyPI):**
+- **Tag:** Select the tag you just created (e.g., `v0.2.0`)
+- **Release title:** `v0.2.0` (or your version)
+- **Description:** Copy from `CHANGELOG.md` or write release notes
+- **☐ Set as a pre-release:** Leave this unchecked
+- Click **"Publish release"**
+
+The GitHub Actions workflow will:
+1. Verify the tag version matches `pyproject.toml`
+2. Build the package
+3. Check the package with `twine`
+4. Publish to PyPI (only for final releases, not pre-releases)
+
+### Workflow Summary
+
+```
+1. Update version in pyproject.toml
+2. Update CHANGELOG.md
+3. Commit and push changes
+4. Create and push git tag
+5. Create GitHub Release (pre-release or final)
+   └─> Pre-release: Testing only, not published to PyPI
+   └─> Final release: Automatically published to PyPI
+```
+
+### Troubleshooting
+
+- **Version mismatch error:** Ensure the tag version (without 'v' prefix) exactly matches `pyproject.toml` version
+- **Pre-release published:** Pre-releases are intentionally skipped. Create a final release to publish to PyPI
+- **Workflow not triggered:** Ensure the release is "Published" (not "Draft") and the tag exists
+
 ## Based On
 
 This scraper is based on the R script approach from:
 - [scrape_oryx](https://github.com/scarnecchia/scrape_oryx) - R script for scraping Oryx data
 - [oryx_data](https://github.com/scarnecchia/oryx_data) - Processed CSV data repository
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development Workflow
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Add tests for new functionality
-5. Ensure all tests pass and code is formatted
-6. Commit your changes (following the commit message guidelines)
+5. Ensure all tests pass and code is formatted (`black . && ruff check . && pytest`)
+6. Commit your changes (following [Conventional Commits](https://www.conventionalcommits.org/))
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
+
+### Commit Message Guidelines
+
+This project follows [Conventional Commits](https://www.conventionalcommits.org/). Commit messages should be formatted as:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, etc.)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+### Code Style
+
+- This project uses [Black](https://black.readthedocs.io/) for code formatting
+- [Ruff](https://github.com/astral-sh/ruff) is used for linting
+- [mypy](https://mypy.readthedocs.io/) is used for type checking
+- All code must pass linting and type checking
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+If you encounter any issues or have questions, please [open an issue](https://github.com/wat-suite/oryx-wat-scraper/issues) on GitHub.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
 
 ## Acknowledgments
 

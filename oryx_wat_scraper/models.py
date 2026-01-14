@@ -2,8 +2,7 @@
 Data models for Oryx scraper.
 """
 
-from dataclasses import dataclass, asdict
-from typing import Dict, Optional
+from dataclasses import asdict, dataclass
 
 
 @dataclass
@@ -13,10 +12,10 @@ class EquipmentEntry:
     country: str
     equipment_type: str
     status: str  # destroyed, captured, abandoned, damaged
-    url: Optional[str] = None
-    date_recorded: Optional[str] = None
+    url: str | None = None
+    date_recorded: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary, filtering None values."""
         return {k: v for k, v in asdict(self).items() if v is not None}
 
@@ -29,9 +28,9 @@ class SystemEntry:
     origin: str
     system: str
     status: str  # destroyed, captured, abandoned, damaged
-    url: Optional[str] = None
-    date_recorded: Optional[str] = None
+    url: str | None = None
+    date_recorded: str | None = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary, filtering None values."""
         return {k: v for k, v in asdict(self).items() if v is not None}
