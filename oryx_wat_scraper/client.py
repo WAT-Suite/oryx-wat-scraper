@@ -51,6 +51,7 @@ class OryxScraper:
         Args:
             timeout: Request timeout in seconds (default: 30.0)
         """
+        self.timeout = timeout
         self.client = httpx.Client(timeout=timeout, follow_redirects=True)
         self.current_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -78,6 +79,9 @@ class OryxScraper:
             raise OryxScraperNetworkError(
                 f"HTTP error {e.response.status_code}: {e}", status_code=e.response.status_code
             ) from e
+        except Exception as e:
+            # Catch any other exceptions (like network errors from mocks)
+            raise OryxScraperNetworkError(f"Failed to fetch page: {e}") from e
 
     def parse_equipment_line(
         self, line: str, country: str, category: str, html_line: Optional[str] = None
