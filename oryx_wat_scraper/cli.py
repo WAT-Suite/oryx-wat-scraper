@@ -3,12 +3,11 @@ CLI entry point for oryx-wat-scraper.
 """
 
 import sys
-from typing import List
 
 from oryx_wat_scraper import OryxScraper
 
 
-def main(args: List[str] | None = None) -> int:
+def main(args: list[str] | None = None) -> int:
     """
     CLI entry point.
 
@@ -49,7 +48,7 @@ def main(args: List[str] | None = None) -> int:
     try:
         with OryxScraper() as scraper:
             if parsed_args.csv:
-                data = scraper.scrape_to_csv(parsed_args.output_dir)
+                scraper.scrape_to_csv(parsed_args.output_dir)
                 print(f"✓ Scraping completed. CSV files saved to {parsed_args.output_dir}")
             else:
                 json_output = scraper.scrape_to_json(

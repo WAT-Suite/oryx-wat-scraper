@@ -10,7 +10,6 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional
 
 import httpx
 from bs4 import BeautifulSoup
@@ -19,7 +18,7 @@ from oryx_wat_scraper.exceptions import (
     OryxScraperNetworkError,
     OryxScraperParseError,
 )
-from oryx_wat_scraper.models import EquipmentEntry, SystemEntry
+from oryx_wat_scraper.models import EquipmentEntry
 
 
 class OryxScraper:
@@ -84,8 +83,8 @@ class OryxScraper:
             raise OryxScraperNetworkError(f"Failed to fetch page: {e}") from e
 
     def parse_equipment_line(
-        self, line: str, country: str, category: str, html_line: Optional[str] = None
-    ) -> List[EquipmentEntry]:
+        self, line: str, country: str, category: str, html_line: str | None = None
+    ) -> list[EquipmentEntry]:
         """
         Parse an equipment line like:
         '154 T-62M: (1, destroyed) (2, destroyed) ... (1, captured)'
@@ -113,7 +112,6 @@ class OryxScraper:
 
             for link_match in link_matches:
                 url = link_match.group(1)
-                entry_num = int(link_match.group(2))
                 status = link_match.group(3).lower()
 
                 entries.append(
@@ -166,7 +164,7 @@ class OryxScraper:
 
         return entries
 
-    def scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
+    def scrape_equipment_entries(self, country: str = "russia") -> list[EquipmentEntry]:
         """
         Scrape all equipment entries for a country, matching R script approach.
         The R script uses rvest to parse HTML structure and extract individual entries.
@@ -229,7 +227,7 @@ class OryxScraper:
 
         return entries
 
-    def generate_daily_count_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def generate_daily_count_csv(self, entries: list[EquipmentEntry]) -> list[dict]:
         """
         Generate daily_count.csv format:
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
@@ -262,7 +260,7 @@ class OryxScraper:
 
         return csv_data
 
-    def generate_totals_by_type_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def generate_totals_by_type_csv(self, entries: list[EquipmentEntry]) -> list[dict]:
         """
         Generate totals_by_type.csv format:
         country, type, destroyed, abandoned, captured, damaged, total
@@ -290,7 +288,7 @@ class OryxScraper:
 
         return csv_data
 
-    def scrape(self, countries: List[str] | None = None) -> Dict:
+    def scrape(self, countries: list[str] | None = None) -> dict:
         """
         Main scraping method. Scrapes data for specified countries and generates
         CSV-compatible data structures matching the R script output.
@@ -321,14 +319,14 @@ class OryxScraper:
             "totals_by_type": totals_by_type,
         }
 
-    def save_csv(self, data: List[Dict], filename: str, fieldnames: List[str]):
+    def save_csv(self, data: list[dict], filename: str, fieldnames: list[str]):
         """Save data to CSV file."""
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data)
 
-    def scrape_to_csv(self, output_dir: str = "outputfiles") -> Dict:
+    def scrape_to_csv(self, output_dir: str = "outputfiles") -> dict:
         """
         Scrape and save to CSV files matching oryx_data format.
 
@@ -367,7 +365,7 @@ class OryxScraper:
 
         return data
 
-    def scrape_to_json(self, output_file: Optional[str] = None, indent: int = 2) -> str:
+    def scrape_to_json(self, output_file: str | None = None, indent: int = 2) -> str:
         """
         Scrape and return/save as JSON.
 

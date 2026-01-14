@@ -1,10 +1,11 @@
 """Tests for the OryxScraper client."""
 
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+
 from oryx_wat_scraper import OryxScraper
-from oryx_wat_scraper.exceptions import OryxScraperNetworkError, OryxScraperParseError
+from oryx_wat_scraper.exceptions import OryxScraperNetworkError
 
 
 def test_scraper_initialization():
