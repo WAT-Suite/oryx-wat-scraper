@@ -21,29 +21,27 @@ def main(args: List[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Scrape Oryx equipment loss data (matching R script approach)'
+        description="Scrape Oryx equipment loss data (matching R script approach)"
     )
     parser.add_argument(
-        '-o', '--output', help='Output JSON file path (default: print to stdout)', default=None
+        "-o", "--output", help="Output JSON file path (default: print to stdout)", default=None
     )
     parser.add_argument(
-        '--csv',
-        action='store_true',
-        help='Generate CSV files matching oryx_data format',
+        "--csv",
+        action="store_true",
+        help="Generate CSV files matching oryx_data format",
     )
     parser.add_argument(
-        '--output-dir',
-        default='outputfiles',
-        help='Output directory for CSV files (default: outputfiles)',
+        "--output-dir",
+        default="outputfiles",
+        help="Output directory for CSV files (default: outputfiles)",
     )
+    parser.add_argument("--indent", type=int, default=2, help="JSON indentation (default: 2)")
     parser.add_argument(
-        '--indent', type=int, default=2, help='JSON indentation (default: 2)'
-    )
-    parser.add_argument(
-        '--countries',
-        nargs='+',
-        default=['russia', 'ukraine'],
-        help='Countries to scrape (default: russia ukraine)',
+        "--countries",
+        nargs="+",
+        default=["russia", "ukraine"],
+        help="Countries to scrape (default: russia ukraine)",
     )
 
     parsed_args = parser.parse_args(args)
@@ -73,5 +71,5 @@ def main(args: List[str] | None = None) -> int:
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

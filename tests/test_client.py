@@ -11,7 +11,10 @@ def test_scraper_initialization():
     """Test scraper initialization."""
     scraper = OryxScraper(timeout=10.0)
     assert scraper.timeout == 10.0
-    assert scraper.BASE_URL == "https://www.oryxspioenkop.com/2022/02/attack-on-europe-documenting-equipment.html"
+    assert (
+        scraper.BASE_URL
+        == "https://www.oryxspioenkop.com/2022/02/attack-on-europe-documenting-equipment.html"
+    )
     scraper.close()
 
 
@@ -23,7 +26,7 @@ def test_scraper_context_manager():
     assert scraper.client.is_closed
 
 
-@patch('oryx_wat_scraper.client.httpx.Client')
+@patch("oryx_wat_scraper.client.httpx.Client")
 def test_fetch_page_success(mock_client_class):
     """Test successful page fetch."""
     mock_response = Mock()
@@ -43,7 +46,7 @@ def test_fetch_page_success(mock_client_class):
     scraper.close()
 
 
-@patch('oryx_wat_scraper.client.httpx.Client')
+@patch("oryx_wat_scraper.client.httpx.Client")
 def test_fetch_page_network_error(mock_client_class):
     """Test network error handling."""
     mock_client = Mock()
@@ -65,12 +68,14 @@ def test_parse_equipment_line():
 
     # Test with HTML links
     html_line = '154 T-62M: <a href="https://example.com/1">(1, destroyed)</a> <a href="https://example.com/2">(2, captured)</a>'
-    entries = scraper.parse_equipment_line('154 T-62M: (1, destroyed) (2, captured)', 'russia', 'Tanks', html_line)
+    entries = scraper.parse_equipment_line(
+        "154 T-62M: (1, destroyed) (2, captured)", "russia", "Tanks", html_line
+    )
 
     assert len(entries) == 2
-    assert entries[0].equipment_type == 'T-62M'
-    assert entries[0].status == 'destroyed'
-    assert entries[1].status == 'captured'
+    assert entries[0].equipment_type == "T-62M"
+    assert entries[0].status == "destroyed"
+    assert entries[1].status == "captured"
 
     scraper.close()
 
@@ -82,19 +87,19 @@ def test_generate_daily_count_csv():
     scraper = OryxScraper()
 
     entries = [
-        EquipmentEntry('russia', 'T-62M', 'destroyed', date_recorded='2024-01-15'),
-        EquipmentEntry('russia', 'T-62M', 'destroyed', date_recorded='2024-01-15'),
-        EquipmentEntry('russia', 'T-62M', 'captured', date_recorded='2024-01-15'),
+        EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
+        EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
+        EquipmentEntry("russia", "T-62M", "captured", date_recorded="2024-01-15"),
     ]
 
     csv_data = scraper.generate_daily_count_csv(entries)
 
     assert len(csv_data) == 1
-    assert csv_data[0]['country'] == 'russia'
-    assert csv_data[0]['equipment_type'] == 'T-62M'
-    assert csv_data[0]['destroyed'] == 2
-    assert csv_data[0]['captured'] == 1
-    assert csv_data[0]['type_total'] == 3
+    assert csv_data[0]["country"] == "russia"
+    assert csv_data[0]["equipment_type"] == "T-62M"
+    assert csv_data[0]["destroyed"] == 2
+    assert csv_data[0]["captured"] == 1
+    assert csv_data[0]["type_total"] == 3
 
     scraper.close()
 
@@ -106,17 +111,17 @@ def test_generate_totals_by_type_csv():
     scraper = OryxScraper()
 
     entries = [
-        EquipmentEntry('russia', 'T-62M', 'destroyed'),
-        EquipmentEntry('russia', 'T-62M', 'destroyed'),
-        EquipmentEntry('russia', 'T-72', 'captured'),
+        EquipmentEntry("russia", "T-62M", "destroyed"),
+        EquipmentEntry("russia", "T-62M", "destroyed"),
+        EquipmentEntry("russia", "T-72", "captured"),
     ]
 
     csv_data = scraper.generate_totals_by_type_csv(entries)
 
     assert len(csv_data) == 2
-    assert csv_data[0]['country'] == 'russia'
-    assert csv_data[0]['type'] == 'T-62M'
-    assert csv_data[0]['destroyed'] == 2
-    assert csv_data[0]['total'] == 2
+    assert csv_data[0]["country"] == "russia"
+    assert csv_data[0]["type"] == "T-62M"
+    assert csv_data[0]["destroyed"] == 2
+    assert csv_data[0]["total"] == 2
 
     scraper.close()

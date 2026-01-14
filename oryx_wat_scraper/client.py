@@ -52,7 +52,7 @@ class OryxScraper:
             timeout: Request timeout in seconds (default: 30.0)
         """
         self.client = httpx.Client(timeout=timeout, follow_redirects=True)
-        self.current_date = datetime.now().strftime('%Y-%m-%d')
+        self.current_date = datetime.now().strftime("%Y-%m-%d")
 
     def __enter__(self):
         """Context manager entry."""
@@ -94,7 +94,7 @@ class OryxScraper:
         entries = []
 
         # Extract equipment name and total count
-        match = re.match(r'^(\d+)\s+(.+?)\s*:', line.strip())
+        match = re.match(r"^(\d+)\s+(.+?)\s*:", line.strip())
         if not match:
             return entries
 
@@ -117,7 +117,7 @@ class OryxScraper:
                         country=country.lower(),
                         equipment_type=equipment_name,
                         status=status,
-                        url=url if url.startswith('http') else None,
+                        url=url if url.startswith("http") else None,
                         date_recorded=self.current_date,
                     )
                 )
@@ -125,7 +125,9 @@ class OryxScraper:
         # Fallback: parse from text if no HTML
         if not entries:
             # Extract all status indicators with their counts
-            status_pattern = r'\((\d+(?:\s*,\s*\d+)*)\s*,\s*(destroyed|captured|abandoned|damaged)\)'
+            status_pattern = (
+                r"\((\d+(?:\s*,\s*\d+)*)\s*,\s*(destroyed|captured|abandoned|damaged)\)"
+            )
             status_matches = re.finditer(status_pattern, line, re.IGNORECASE)
 
             for status_match in status_matches:
@@ -133,7 +135,7 @@ class OryxScraper:
                 status = status_match.group(2).lower()
 
                 # Handle "1, 2, 3" format - count the numbers
-                numbers = re.findall(r'\d+', numbers_str)
+                numbers = re.findall(r"\d+", numbers_str)
                 count = len(numbers)
 
                 for _ in range(count):
@@ -153,27 +155,27 @@ class OryxScraper:
                     EquipmentEntry(
                         country=country.lower(),
                         equipment_type=equipment_name,
-                        status='destroyed',
+                        status="destroyed",
                         date_recorded=self.current_date,
                     )
                 )
 
         return entries
 
-    def scrape_equipment_entries(self, country: str = 'russia') -> List[EquipmentEntry]:
+    def scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
         """
         Scrape all equipment entries for a country, matching R script approach.
         The R script uses rvest to parse HTML structure and extract individual entries.
         """
         html_content = self.fetch_page()
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
 
         # Find the main content (Blogger/Blogspot structure)
         content = (
-            soup.find('div', class_='post-body')
-            or soup.find('div', class_='post')
-            or soup.find('article')
-            or soup.find('body')
+            soup.find("div", class_="post-body")
+            or soup.find("div", class_="post")
+            or soup.find("article")
+            or soup.find("body")
         )
 
         if not content:
@@ -185,7 +187,7 @@ class OryxScraper:
         country_lower = country.lower()
 
         # Find all elements that might contain equipment data
-        for element in content.find_all(['p', 'li', 'div']):
+        for element in content.find_all(["p", "li", "div"]):
             text = element.get_text(strip=True)
             html_str = str(element)
 
@@ -194,27 +196,27 @@ class OryxScraper:
 
             # Detect country section header
             if country_lower in text.lower() and any(
-                word in text.lower() for word in ['total', 'losses']
+                word in text.lower() for word in ["total", "losses"]
             ):
                 in_country_section = True
                 continue
 
             # Check if we've moved to another country section
             if in_country_section:
-                if 'ukraine' in text.lower() and country_lower == 'russia':
+                if "ukraine" in text.lower() and country_lower == "russia":
                     break
-                if 'russia' in text.lower() and country_lower == 'ukraine':
+                if "russia" in text.lower() and country_lower == "ukraine":
                     break
 
             # Detect category headers
-            category_match = re.search(r'^([^(]+?)\s*\((\d+)', text, re.IGNORECASE)
+            category_match = re.search(r"^([^(]+?)\s*\((\d+)", text, re.IGNORECASE)
             if category_match:
                 current_category = category_match.group(1).strip()
                 continue
 
             # Parse equipment lines
             if in_country_section and current_category:
-                equipment_match = re.match(r'^(\d+)\s+(.+?)\s*:', text)
+                equipment_match = re.match(r"^(\d+)\s+(.+?)\s*:", text)
                 if equipment_match:
                     equipment_entries = self.parse_equipment_line(
                         text, country, current_category, html_str
@@ -228,9 +230,7 @@ class OryxScraper:
         Generate daily_count.csv format:
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
         """
-        grouped = defaultdict(
-            lambda: {'destroyed': 0, 'abandoned': 0, 'captured': 0, 'damaged': 0}
-        )
+        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
 
         for entry in entries:
             key = (
@@ -245,14 +245,14 @@ class OryxScraper:
             total = sum(counts.values())
             csv_data.append(
                 {
-                    'country': country,
-                    'equipment_type': eq_type,
-                    'destroyed': counts['destroyed'],
-                    'abandoned': counts['abandoned'],
-                    'captured': counts['captured'],
-                    'damaged': counts['damaged'],
-                    'type_total': total,
-                    'date_recorded': date,
+                    "country": country,
+                    "equipment_type": eq_type,
+                    "destroyed": counts["destroyed"],
+                    "abandoned": counts["abandoned"],
+                    "captured": counts["captured"],
+                    "damaged": counts["damaged"],
+                    "type_total": total,
+                    "date_recorded": date,
                 }
             )
 
@@ -263,9 +263,7 @@ class OryxScraper:
         Generate totals_by_type.csv format:
         country, type, destroyed, abandoned, captured, damaged, total
         """
-        grouped = defaultdict(
-            lambda: {'destroyed': 0, 'abandoned': 0, 'captured': 0, 'damaged': 0}
-        )
+        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
 
         for entry in entries:
             key = (entry.country, entry.equipment_type)
@@ -276,13 +274,13 @@ class OryxScraper:
             total = sum(counts.values())
             csv_data.append(
                 {
-                    'country': country,
-                    'type': eq_type,
-                    'destroyed': counts['destroyed'],
-                    'abandoned': counts['abandoned'],
-                    'captured': counts['captured'],
-                    'damaged': counts['damaged'],
-                    'total': total,
+                    "country": country,
+                    "type": eq_type,
+                    "destroyed": counts["destroyed"],
+                    "abandoned": counts["abandoned"],
+                    "captured": counts["captured"],
+                    "damaged": counts["damaged"],
+                    "total": total,
                 }
             )
 
@@ -300,7 +298,7 @@ class OryxScraper:
             Dictionary with scraped data and CSV-ready structures
         """
         if countries is None:
-            countries = ['russia', 'ukraine']
+            countries = ["russia", "ukraine"]
 
         all_entries = []
 
@@ -321,12 +319,12 @@ class OryxScraper:
 
     def save_csv(self, data: List[Dict], filename: str, fieldnames: List[str]):
         """Save data to CSV file."""
-        with open(filename, 'w', newline='', encoding='utf-8') as f:
+        with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data)
 
-    def scrape_to_csv(self, output_dir: str = 'outputfiles') -> Dict:
+    def scrape_to_csv(self, output_dir: str = "outputfiles") -> Dict:
         """
         Scrape and save to CSV files matching oryx_data format.
 
@@ -342,25 +340,25 @@ class OryxScraper:
 
         # Save daily_count.csv
         self.save_csv(
-            data['daily_count'],
-            os.path.join(output_dir, 'daily_count.csv'),
+            data["daily_count"],
+            os.path.join(output_dir, "daily_count.csv"),
             [
-                'country',
-                'equipment_type',
-                'destroyed',
-                'abandoned',
-                'captured',
-                'damaged',
-                'type_total',
-                'date_recorded',
+                "country",
+                "equipment_type",
+                "destroyed",
+                "abandoned",
+                "captured",
+                "damaged",
+                "type_total",
+                "date_recorded",
             ],
         )
 
         # Save totals_by_type.csv
         self.save_csv(
-            data['totals_by_type'],
-            os.path.join(output_dir, 'totals_by_type.csv'),
-            ['country', 'type', 'destroyed', 'abandoned', 'captured', 'damaged', 'total'],
+            data["totals_by_type"],
+            os.path.join(output_dir, "totals_by_type.csv"),
+            ["country", "type", "destroyed", "abandoned", "captured", "damaged", "total"],
         )
 
         return data
@@ -380,7 +378,7 @@ class OryxScraper:
         json_str = json.dumps(data, indent=indent, ensure_ascii=False)
 
         if output_file:
-            with open(output_file, 'w', encoding='utf-8') as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 f.write(json_str)
 
         return json_str
