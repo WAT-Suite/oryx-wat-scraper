@@ -8,7 +8,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -17,7 +17,7 @@ from oryx_wat_scraper.exceptions import (
     OryxScraperNetworkError,
     OryxScraperParseError,
 )
-from oryx_wat_scraper.models import EquipmentEntry, SystemEntry
+from oryx_wat_scraper.models import EquipmentEntry
 
 
 class AsyncOryxScraper:
@@ -87,8 +87,8 @@ class AsyncOryxScraper:
             raise OryxScraperNetworkError(f"Failed to fetch page: {e}") from e
 
     def _parse_equipment_line(
-        self, line: str, country: str, category: str, html_line: Optional[str] = None
-    ) -> List[EquipmentEntry]:
+        self, line: str, country: str, category: str, html_line: str | None = None
+    ) -> list[EquipmentEntry]:
         """
         Parse an equipment line (internal method).
         '154 T-62M: (1, destroyed) (2, destroyed) ... (1, captured)'
@@ -98,7 +98,7 @@ class AsyncOryxScraper:
 
         Returns list of EquipmentEntry objects.
         """
-        entries = []
+        entries: list[EquipmentEntry] = []
 
         # Extract equipment name and total count
         match = re.match(r"^(\d+)\s+(.+?)\s*:", line.strip())
@@ -115,7 +115,6 @@ class AsyncOryxScraper:
 
             for link_match in link_matches:
                 url = link_match.group(1)
-                entry_num = int(link_match.group(2))
                 status = link_match.group(3).lower()
 
                 entries.append(
@@ -166,7 +165,7 @@ class AsyncOryxScraper:
 
         return entries
 
-    async def _scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
+    async def _scrape_equipment_entries(self, country: str = "russia") -> list[EquipmentEntry]:
         """
         Scrape all equipment entries for a country (internal method).
         The R script uses rvest to parse HTML structure and extract individual entries.
@@ -229,12 +228,14 @@ class AsyncOryxScraper:
 
         return entries
 
-    def _generate_daily_count_csv(self, entries: List[EquipmentEntry]) -> List[Dict[str, Any]]:
+    def _generate_daily_count_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
         """
         Generate daily_count.csv format (internal method):
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
         """
-        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
+        grouped: dict[tuple[str, str, str], dict[str, int]] = defaultdict(
+            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
+        )
 
         for entry in entries:
             key = (
@@ -262,12 +263,14 @@ class AsyncOryxScraper:
 
         return csv_data
 
-    def _generate_totals_by_type_csv(self, entries: List[EquipmentEntry]) -> List[Dict[str, Any]]:
+    def _generate_totals_by_type_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
         """
         Generate totals_by_type.csv format (internal method):
         country, type, destroyed, abandoned, captured, damaged, total
         """
-        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
+        grouped: dict[tuple[str, str], dict[str, int]] = defaultdict(
+            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
+        )
 
         for entry in entries:
             key = (entry.country, entry.equipment_type)
@@ -290,7 +293,7 @@ class AsyncOryxScraper:
 
         return csv_data
 
-    async def get_equipment_data(self, country: str = "russia") -> List[EquipmentEntry]:
+    async def get_equipment_data(self, country: str = "russia") -> list[EquipmentEntry]:
         """
         Get equipment entries for a specific country.
 
@@ -316,7 +319,7 @@ class AsyncOryxScraper:
         """
         return await self._scrape_equipment_entries(country)
 
-    async def get_daily_counts(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    async def get_daily_counts(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
         Get daily count data aggregated by country, equipment type, and date.
 
@@ -350,7 +353,7 @@ class AsyncOryxScraper:
 
         return self._generate_daily_count_csv(all_entries)
 
-    async def get_totals_by_type(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    async def get_totals_by_type(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
         Get total counts aggregated by country and equipment type.
 
@@ -384,7 +387,7 @@ class AsyncOryxScraper:
 
         return self._generate_totals_by_type_csv(all_entries)
 
-    async def scrape(self, countries: List[str] | None = None) -> Dict[str, Any]:
+    async def scrape(self, countries: list[str] | None = None) -> dict[str, Any]:
         """
         Main scraping method. Scrapes data for specified countries and generates
         CSV-compatible data structures matching the R script output.
@@ -415,14 +418,14 @@ class AsyncOryxScraper:
             "totals_by_type": totals_by_type,
         }
 
-    def _save_csv(self, data: List[Dict], filename: str, fieldnames: List[str]):
+    def _save_csv(self, data: list[dict], filename: str, fieldnames: list[str]):
         """Save data to CSV file (internal method)."""
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data)
 
-    async def scrape_to_csv(self, output_dir: str = "outputfiles") -> Dict[str, Any]:
+    async def scrape_to_csv(self, output_dir: str = "outputfiles") -> dict[str, Any]:
         """
         Scrape and save to CSV files matching oryx_data format.
 
@@ -461,7 +464,7 @@ class AsyncOryxScraper:
 
         return data
 
-    async def scrape_to_json(self, output_file: Optional[str] = None, indent: int = 2) -> str:
+    async def scrape_to_json(self, output_file: str | None = None, indent: int = 2) -> str:
         """
         Scrape and return/save as JSON.
 

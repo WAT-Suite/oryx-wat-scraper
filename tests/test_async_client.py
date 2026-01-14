@@ -1,7 +1,8 @@
 """Tests for the AsyncOryxScraper client."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from oryx_wat_scraper import AsyncOryxScraper
 from oryx_wat_scraper.exceptions import OryxScraperNetworkError

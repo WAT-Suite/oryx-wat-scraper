@@ -10,7 +10,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
@@ -94,8 +94,8 @@ class OryxScraper:
             raise OryxScraperNetworkError(f"Failed to fetch page: {e}") from e
 
     def _parse_equipment_line(
-        self, line: str, country: str, category: str, html_line: Optional[str] = None
-    ) -> List[EquipmentEntry]:
+        self, line: str, country: str, category: str, html_line: str | None = None
+    ) -> list[EquipmentEntry]:
         """
         Parse an equipment line (internal method).
         '154 T-62M: (1, destroyed) (2, destroyed) ... (1, captured)'
@@ -175,7 +175,7 @@ class OryxScraper:
 
         return entries
 
-    def _scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
+    def _scrape_equipment_entries(self, country: str = "russia") -> list[EquipmentEntry]:
         """
         Scrape all equipment entries for a country (internal method).
         The R script uses rvest to parse HTML structure and extract individual entries.
@@ -238,12 +238,12 @@ class OryxScraper:
 
         return entries
 
-    def _generate_daily_count_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def _generate_daily_count_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
         """
         Generate daily_count.csv format (internal method):
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
+        grouped: dict[tuple[str, str, str], dict[str, int]] = defaultdict(
             lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
         )
 
@@ -273,12 +273,12 @@ class OryxScraper:
 
         return csv_data
 
-    def _generate_totals_by_type_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def _generate_totals_by_type_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
         """
         Generate totals_by_type.csv format (internal method):
         country, type, destroyed, abandoned, captured, damaged, total
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
+        grouped: dict[tuple[str, str], dict[str, int]] = defaultdict(
             lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
         )
 
@@ -303,7 +303,7 @@ class OryxScraper:
 
         return csv_data
 
-    def get_equipment_data(self, country: str = "russia") -> List[EquipmentEntry]:
+    def get_equipment_data(self, country: str = "russia") -> list[EquipmentEntry]:
         """
         Get equipment entries for a specific country.
 
@@ -325,7 +325,7 @@ class OryxScraper:
         """
         return self._scrape_equipment_entries(country)
 
-    def get_daily_counts(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    def get_daily_counts(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
         Get daily count data aggregated by country, equipment type, and date.
 
@@ -363,7 +363,7 @@ class OryxScraper:
 
         return self._generate_daily_count_csv(all_entries)
 
-    def get_totals_by_type(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    def get_totals_by_type(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
         Get total counts aggregated by country and equipment type.
 
@@ -400,7 +400,7 @@ class OryxScraper:
 
         return self._generate_totals_by_type_csv(all_entries)
 
-    def scrape(self, countries: List[str] | None = None) -> Dict:
+    def scrape(self, countries: list[str] | None = None) -> dict:
         """
         Main scraping method. Scrapes data for specified countries and generates
         CSV-compatible data structures matching the R script output.
@@ -431,7 +431,7 @@ class OryxScraper:
             "totals_by_type": totals_by_type,
         }
 
-    def _save_csv(self, data: List[Dict], filename: str, fieldnames: List[str]):
+    def _save_csv(self, data: list[dict], filename: str, fieldnames: list[str]):
         """Save data to CSV file (internal method)."""
         with open(filename, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
