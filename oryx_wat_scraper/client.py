@@ -232,7 +232,9 @@ class OryxScraper:
         Generate daily_count.csv format:
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
+        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
+            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
+        )
 
         for entry in entries:
             key = (
@@ -265,7 +267,9 @@ class OryxScraper:
         Generate totals_by_type.csv format:
         country, type, destroyed, abandoned, captured, damaged, total
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
+        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
+            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
+        )
 
         for entry in entries:
             key = (entry.country, entry.equipment_type)
