@@ -17,7 +17,6 @@ This package scrapes equipment loss data directly from the Oryx blog post and ge
 
 ## Features
 
-- ✅ **R Script Compatible**: Matches the approach used in the R script
 - ✅ **CSV Output**: Generates CSV files matching oryx_data format
 - ✅ **Type-safe**: Full type hints with dataclasses
 - ✅ **Context Manager**: Proper resource cleanup
