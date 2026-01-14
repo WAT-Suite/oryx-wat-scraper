@@ -1,7 +1,5 @@
 """
-Main client class for scraping Oryx equipment loss data.
-
-Based on the R script approach from: https://github.com/scarnecchia/scrape_oryx
+Async client class for scraping Oryx equipment loss data.
 """
 
 import csv
@@ -19,36 +17,25 @@ from oryx_wat_scraper.exceptions import (
     OryxScraperNetworkError,
     OryxScraperParseError,
 )
-from oryx_wat_scraper.models import EquipmentEntry
+from oryx_wat_scraper.models import EquipmentEntry, SystemEntry
 
 
-class OryxScraper:
+class AsyncOryxScraper:
     """
-    Scraper for Oryx equipment loss data, matching the R script approach.
-
-    The R script (scrape_oryx) uses rvest to:
-    1. Parse HTML structure from the blog post
-    2. Extract individual equipment entries with status indicators
-    3. Track equipment by country (Russia/Ukraine)
-    4. Generate time-series and aggregate CSV files
+    Async scraper for Oryx equipment loss data, matching the R script approach.
 
     Example:
         ```python
-        from oryx_wat_scraper import OryxScraper
+        import asyncio
+        from oryx_wat_scraper import AsyncOryxScraper
 
-        scraper = OryxScraper()
+        async def main():
+            async with AsyncOryxScraper() as scraper:
+                entries = await scraper.get_equipment_data(country="russia")
+                daily_counts = await scraper.get_daily_counts(countries=["russia", "ukraine"])
+                totals = await scraper.get_totals_by_type(country="russia")
 
-        # Get equipment data for a country
-        entries = scraper.get_equipment_data(country="russia")
-
-        # Get daily counts
-        daily_counts = scraper.get_daily_counts(countries=["russia", "ukraine"])
-
-        # Get totals by type
-        totals = scraper.get_totals_by_type(country="russia")
-
-        # Or use the convenience methods
-        scraper.scrape_to_csv('output')
+        asyncio.run(main())
         ```
     """
 
@@ -56,31 +43,38 @@ class OryxScraper:
 
     def __init__(self, timeout: float = 30.0):
         """
-        Initialize the scraper.
+        Initialize the async scraper.
 
         Args:
             timeout: Request timeout in seconds (default: 30.0)
         """
         self.timeout = timeout
-        self.client = httpx.Client(timeout=timeout, follow_redirects=True)
+        self._client: httpx.AsyncClient | None = None
         self.current_date = datetime.now().strftime("%Y-%m-%d")
 
-    def __enter__(self):
-        """Context manager entry."""
+    async def __aenter__(self):
+        """Async context manager entry."""
+        self._client = httpx.AsyncClient(timeout=self.timeout, follow_redirects=True)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.aclose()
 
-    def close(self):
+    async def aclose(self):
         """Close the HTTP client."""
-        self.client.close()
+        if self._client:
+            await self._client.aclose()
 
-    def _fetch_page(self) -> str:
+    async def _fetch_page(self) -> str:
         """Fetch the HTML content from the Oryx page (internal method)."""
+        if not self._client:
+            raise RuntimeError(
+                "Client not initialized. Use async with AsyncOryxScraper() as scraper:"
+            )
+
         try:
-            response = self.client.get(self.BASE_URL)
+            response = await self._client.get(self.BASE_URL)
             response.raise_for_status()
             return response.text
         except httpx.RequestError as e:
@@ -90,7 +84,6 @@ class OryxScraper:
                 f"HTTP error {e.response.status_code}: {e}", status_code=e.response.status_code
             ) from e
         except Exception as e:
-            # Catch any other exceptions (like network errors from mocks)
             raise OryxScraperNetworkError(f"Failed to fetch page: {e}") from e
 
     def _parse_equipment_line(
@@ -105,7 +98,7 @@ class OryxScraper:
 
         Returns list of EquipmentEntry objects.
         """
-        entries: list[EquipmentEntry] = []
+        entries = []
 
         # Extract equipment name and total count
         match = re.match(r"^(\d+)\s+(.+?)\s*:", line.strip())
@@ -117,12 +110,12 @@ class OryxScraper:
 
         # If we have HTML, parse the links to get individual entries
         if html_line:
-            # Find all links with numbers - these represent individual equipment pieces
             link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>\((\d+),\s*(destroyed|captured|abandoned|damaged)\)</a>'
             link_matches = re.finditer(link_pattern, html_line, re.IGNORECASE)
 
             for link_match in link_matches:
                 url = link_match.group(1)
+                entry_num = int(link_match.group(2))
                 status = link_match.group(3).lower()
 
                 entries.append(
@@ -137,7 +130,6 @@ class OryxScraper:
 
         # Fallback: parse from text if no HTML
         if not entries:
-            # Extract all status indicators with their counts
             status_pattern = (
                 r"\((\d+(?:\s*,\s*\d+)*)\s*,\s*(destroyed|captured|abandoned|damaged)\)"
             )
@@ -147,7 +139,6 @@ class OryxScraper:
                 numbers_str = status_match.group(1)
                 status = status_match.group(2).lower()
 
-                # Handle "1, 2, 3" format - count the numbers
                 numbers = re.findall(r"\d+", numbers_str)
                 count = len(numbers)
 
@@ -175,12 +166,12 @@ class OryxScraper:
 
         return entries
 
-    def _scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
+    async def _scrape_equipment_entries(self, country: str = "russia") -> List[EquipmentEntry]:
         """
         Scrape all equipment entries for a country (internal method).
         The R script uses rvest to parse HTML structure and extract individual entries.
         """
-        html_content = self._fetch_page()
+        html_content = await self._fetch_page()
         soup = BeautifulSoup(html_content, "html.parser")
 
         # Find the main content (Blogger/Blogspot structure)
@@ -238,14 +229,12 @@ class OryxScraper:
 
         return entries
 
-    def _generate_daily_count_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def _generate_daily_count_csv(self, entries: List[EquipmentEntry]) -> List[Dict[str, Any]]:
         """
         Generate daily_count.csv format (internal method):
         country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
-            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
-        )
+        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
 
         for entry in entries:
             key = (
@@ -273,14 +262,12 @@ class OryxScraper:
 
         return csv_data
 
-    def _generate_totals_by_type_csv(self, entries: List[EquipmentEntry]) -> List[Dict]:
+    def _generate_totals_by_type_csv(self, entries: List[EquipmentEntry]) -> List[Dict[str, Any]]:
         """
         Generate totals_by_type.csv format (internal method):
         country, type, destroyed, abandoned, captured, damaged, total
         """
-        grouped: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
-            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
-        )
+        grouped = defaultdict(lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0})
 
         for entry in entries:
             key = (entry.country, entry.equipment_type)
@@ -303,7 +290,7 @@ class OryxScraper:
 
         return csv_data
 
-    def get_equipment_data(self, country: str = "russia") -> List[EquipmentEntry]:
+    async def get_equipment_data(self, country: str = "russia") -> List[EquipmentEntry]:
         """
         Get equipment entries for a specific country.
 
@@ -315,17 +302,21 @@ class OryxScraper:
 
         Example:
             ```python
-            from oryx_wat_scraper import OryxScraper
+            import asyncio
+            from oryx_wat_scraper import AsyncOryxScraper
 
-            scraper = OryxScraper()
-            entries = scraper.get_equipment_data(country="russia")
-            for entry in entries:
-                print(f"{entry.equipment_type}: {entry.status}")
+            async def main():
+                async with AsyncOryxScraper() as scraper:
+                    entries = await scraper.get_equipment_data(country="russia")
+                    for entry in entries:
+                        print(f"{entry.equipment_type}: {entry.status}")
+
+            asyncio.run(main())
             ```
         """
-        return self._scrape_equipment_entries(country)
+        return await self._scrape_equipment_entries(country)
 
-    def get_daily_counts(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    async def get_daily_counts(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
         """
         Get daily count data aggregated by country, equipment type, and date.
 
@@ -333,24 +324,20 @@ class OryxScraper:
             countries: List of countries to scrape (default: ['russia', 'ukraine'])
 
         Returns:
-            List of dictionaries with daily count data:
-            - country: Country name
-            - equipment_type: Equipment type
-            - destroyed: Number destroyed
-            - abandoned: Number abandoned
-            - captured: Number captured
-            - damaged: Number damaged
-            - type_total: Total for this type
-            - date_recorded: Date of recording
+            List of dictionaries with daily count data
 
         Example:
             ```python
-            from oryx_wat_scraper import OryxScraper
+            import asyncio
+            from oryx_wat_scraper import AsyncOryxScraper
 
-            scraper = OryxScraper()
-            daily_counts = scraper.get_daily_counts(countries=["russia"])
-            for count in daily_counts:
-                print(f"{count['equipment_type']}: {count['destroyed']} destroyed")
+            async def main():
+                async with AsyncOryxScraper() as scraper:
+                    daily_counts = await scraper.get_daily_counts(countries=["russia"])
+                    for count in daily_counts:
+                        print(f"{count['equipment_type']}: {count['destroyed']} destroyed")
+
+            asyncio.run(main())
             ```
         """
         if countries is None:
@@ -358,12 +345,12 @@ class OryxScraper:
 
         all_entries = []
         for country in countries:
-            entries = self._scrape_equipment_entries(country)
+            entries = await self._scrape_equipment_entries(country)
             all_entries.extend(entries)
 
         return self._generate_daily_count_csv(all_entries)
 
-    def get_totals_by_type(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
+    async def get_totals_by_type(self, countries: List[str] | None = None) -> List[Dict[str, Any]]:
         """
         Get total counts aggregated by country and equipment type.
 
@@ -371,23 +358,20 @@ class OryxScraper:
             countries: List of countries to scrape (default: ['russia', 'ukraine'])
 
         Returns:
-            List of dictionaries with totals by type:
-            - country: Country name
-            - type: Equipment type
-            - destroyed: Total destroyed
-            - abandoned: Total abandoned
-            - captured: Total captured
-            - damaged: Total damaged
-            - total: Grand total
+            List of dictionaries with totals by type
 
         Example:
             ```python
-            from oryx_wat_scraper import OryxScraper
+            import asyncio
+            from oryx_wat_scraper import AsyncOryxScraper
 
-            scraper = OryxScraper()
-            totals = scraper.get_totals_by_type(countries=["russia"])
-            for total in totals:
-                print(f"{total['type']}: {total['total']} total losses")
+            async def main():
+                async with AsyncOryxScraper() as scraper:
+                    totals = await scraper.get_totals_by_type(countries=["russia"])
+                    for total in totals:
+                        print(f"{total['type']}: {total['total']} total losses")
+
+            asyncio.run(main())
             ```
         """
         if countries is None:
@@ -395,12 +379,12 @@ class OryxScraper:
 
         all_entries = []
         for country in countries:
-            entries = self._scrape_equipment_entries(country)
+            entries = await self._scrape_equipment_entries(country)
             all_entries.extend(entries)
 
         return self._generate_totals_by_type_csv(all_entries)
 
-    def scrape(self, countries: List[str] | None = None) -> Dict:
+    async def scrape(self, countries: List[str] | None = None) -> Dict[str, Any]:
         """
         Main scraping method. Scrapes data for specified countries and generates
         CSV-compatible data structures matching the R script output.
@@ -417,7 +401,7 @@ class OryxScraper:
         all_entries = []
 
         for country in countries:
-            entries = self._scrape_equipment_entries(country)
+            entries = await self._scrape_equipment_entries(country)
             all_entries.extend(entries)
 
         daily_count = self._generate_daily_count_csv(all_entries)
@@ -438,7 +422,7 @@ class OryxScraper:
             writer.writeheader()
             writer.writerows(data)
 
-    def scrape_to_csv(self, output_dir: str = "outputfiles") -> dict:
+    async def scrape_to_csv(self, output_dir: str = "outputfiles") -> Dict[str, Any]:
         """
         Scrape and save to CSV files matching oryx_data format.
 
@@ -450,7 +434,7 @@ class OryxScraper:
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        data = self.scrape()
+        data = await self.scrape()
 
         # Save daily_count.csv
         self._save_csv(
@@ -477,7 +461,7 @@ class OryxScraper:
 
         return data
 
-    def scrape_to_json(self, output_file: str | None = None, indent: int = 2) -> str:
+    async def scrape_to_json(self, output_file: Optional[str] = None, indent: int = 2) -> str:
         """
         Scrape and return/save as JSON.
 
@@ -488,7 +472,7 @@ class OryxScraper:
         Returns:
             JSON string
         """
-        data = self.scrape()
+        data = await self.scrape()
         json_str = json.dumps(data, indent=indent, ensure_ascii=False)
 
         if output_file:
