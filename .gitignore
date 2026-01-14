@@ -15,16 +15,29 @@ build/
 .coverage
 htmlcov/
 .mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
 
 # Output files
 *.json
 output.json
-data.json
+outputfiles/
+*.csv
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
 .DS_Store
+
+# Testing
+.coverage
+coverage.xml
+.pytest_cache/
+
+# Environment
+.env
+.env.local

@@ -1,114 +1,95 @@
-# Oryx Scraper
+# oryx-wat-scraper
 
-Direct HTML scraper for the Oryx blog post documenting equipment losses during the Russian invasion of Ukraine.
+[![PyPI version](https://img.shields.io/pypi/v/oryx-wat-scraper.svg)](https://pypi.org/project/oryx-wat-scraper/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/oryx-wat-scraper.svg)](https://pypi.org/project/oryx-wat-scraper/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This scraper is based on the R script approach from: https://github.com/scarnecchia/scrape_oryx
+Python scraper for Oryx equipment loss data, matching the R script approach from [scrape_oryx](https://github.com/scarnecchia/scrape_oryx).
 
-It extracts individual equipment entries and generates CSV files matching the format used in the oryx_data repository.
+This package scrapes equipment loss data directly from the Oryx blog post and generates CSV files in the same format as the [oryx_data](https://github.com/scarnecchia/oryx_data) repository.
 
-## Overview
+## Features
 
-This scraper parses the HTML content from:
-https://www.oryxspioenkop.com/2022/02/attack-on-europe-documenting-equipment.html
-
-It extracts:
-- **Total losses summaries** (by country and category)
-- **Individual equipment counts** by type within each category
-- **Status breakdowns** (destroyed, damaged, abandoned, captured)
+- ✅ **R Script Compatible**: Matches the approach used in the R script
+- ✅ **CSV Output**: Generates CSV files matching oryx_data format
+- ✅ **Type-safe**: Full type hints with dataclasses
+- ✅ **Context Manager**: Proper resource cleanup
+- ✅ **Well-tested**: Comprehensive test suite
+- ✅ **Modern Python**: Requires Python 3.10+
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install oryx-wat-scraper
 ```
 
-## Usage
-
-### Command Line
+Or using `uv`:
 
 ```bash
-# Print JSON to stdout
-python scraper.py
-
-# Save to JSON file
-python scraper.py -o output.json
-
-# Generate CSV files (matching oryx_data format)
-python scraper.py --csv
-
-# Generate CSV files in custom directory
-python scraper.py --csv --output-dir my_output
-
-# Custom indentation
-python scraper.py -o output.json --indent 4
-
-# Scrape specific countries
-python scraper.py --countries russia ukraine
+uv add oryx-wat-scraper
 ```
+
+Or using `poetry`:
+
+```bash
+poetry add oryx-wat-scraper
+```
+
+## Quick Start
 
 ### Python API
 
 ```python
-from scraper import OryxScraper
+from oryx_wat_scraper import OryxScraper
+
+# Initialize the scraper
+scraper = OryxScraper()
+
+# Scrape data
+data = scraper.scrape()
+
+# Generate CSV files (matching oryx_data format)
+scraper.scrape_to_csv('outputfiles')
+
+# Or get JSON
+json_data = scraper.scrape_to_json('output.json')
+
+# Close when done
+scraper.close()
+```
+
+### Context Manager
+
+```python
+from oryx_wat_scraper import OryxScraper
 
 with OryxScraper() as scraper:
-    data = scraper.scrape()
-    print(data)
+    # Scrape specific countries
+    data = scraper.scrape(countries=['russia', 'ukraine'])
 
-    # Or save directly to JSON
-    scraper.scrape_to_json('output.json')
+    # Generate CSV files
+    scraper.scrape_to_csv('outputfiles')
+```
+
+### Command Line
+
+```bash
+# Generate CSV files
+oryx-scraper --csv
+
+# Save to JSON
+oryx-scraper -o output.json
+
+# Scrape specific countries
+oryx-scraper --csv --countries russia ukraine
+
+# Custom output directory
+oryx-scraper --csv --output-dir my_output
 ```
 
 ## Output Formats
 
-### JSON Output
-
-The scraper returns a JSON structure:
-
-```json
-{
-  "url": "https://www.oryxspioenkop.com/...",
-  "total_losses": [
-    {
-      "label": "Russia",
-      "total": 23933,
-      "destroyed": 18606,
-      "damaged": 938,
-      "abandoned": 1221,
-      "captured": 3168
-    },
-    ...
-  ],
-  "categories": [
-    {
-      "category": "Tanks",
-      "total": 4322,
-      "destroyed": 3225,
-      "damaged": 158,
-      "abandoned": 400,
-      "captured": 539,
-      "equipment_types": [
-        {
-          "category": "Tanks",
-          "name": "T-54-3M",
-          "count": 2
-        },
-        {
-          "category": "Tanks",
-          "name": "T-62M",
-          "count": 154
-        },
-        ...
-      ]
-    },
-    ...
-  ]
-}
-```
-
-### CSV Output (matching oryx_data format)
-
-When using `--csv`, the scraper generates CSV files matching the oryx_data repository:
+### CSV Files (matching oryx_data format)
 
 **daily_count.csv** (columns: country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded)
 ```csv
@@ -124,36 +105,121 @@ russia,T-62M,154,5,34,1,194
 ukraine,T-72,45,2,8,0,55
 ```
 
-## Data Formats Parsed
+### JSON Output
 
-### Total Losses Format
-```
-Russia - 23933, of which: destroyed: 18606, damaged: 938, abandoned: 1221, captured: 3168
-```
-
-### Category Header Format
-```
-Tanks (4322, of which destroyed: 3225, damaged: 158, abandoned: 400, captured: 539)
-```
-
-### Equipment Line Format
-```
-154 T-62M:
-2 T-54-3M:
-10 T-55A:
+```python
+{
+  "url": "https://www.oryxspioenkop.com/...",
+  "date_scraped": "2024-01-15",
+  "total_entries": 1000,
+  "daily_count": [...],
+  "totals_by_type": [...]
+}
 ```
 
-## Notes
+## API Reference
 
-- The scraper uses BeautifulSoup to parse HTML
-- It handles the Blogger/Blogspot HTML structure
-- Regex patterns are used to extract structured data from text
-- All numeric values are parsed as integers
-- The scraper respects rate limits with a 30-second timeout
+### `OryxScraper`
 
-## Requirements
+Main scraper class.
 
-- Python 3.8+
-- httpx (for HTTP requests)
-- beautifulsoup4 (for HTML parsing)
-- lxml (for faster HTML parsing)
+#### Methods
+
+- `scrape(countries: List[str] | None = None) -> Dict`: Scrape data for specified countries
+- `scrape_to_csv(output_dir: str = 'outputfiles') -> Dict`: Scrape and save to CSV files
+- `scrape_to_json(output_file: str | None = None, indent: int = 2) -> str`: Scrape and return/save as JSON
+- `close()`: Close the HTTP client
+
+### Models
+
+- `EquipmentEntry`: Individual equipment entry with status
+- `SystemEntry`: Individual system entry with status
+
+### Exceptions
+
+- `OryxScraperError`: Base exception
+- `OryxScraperNetworkError`: Network errors
+- `OryxScraperParseError`: HTML parsing errors
+- `OryxScraperValidationError`: Data validation errors
+
+## Development
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/oryx-wat-scraper.git
+cd oryx-wat-scraper
+
+# Install with uv
+uv sync --dev
+
+# Install pre-commit hooks
+uv run pre-commit install
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=oryx_wat_scraper --cov-report=html
+
+# Run specific test file
+uv run pytest tests/test_client.py
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run black .
+
+# Lint code
+uv run ruff check .
+
+# Type check
+uv run mypy oryx_wat_scraper
+```
+
+### Make Commands
+
+```bash
+make install-dev  # Install with dev dependencies
+make test         # Run tests
+make lint         # Run linters
+make format       # Format code
+make type-check   # Type check
+make clean        # Clean build artifacts
+```
+
+## Based On
+
+This scraper is based on the R script approach from:
+- [scrape_oryx](https://github.com/scarnecchia/scrape_oryx) - R script for scraping Oryx data
+- [oryx_data](https://github.com/scarnecchia/oryx_data) - Processed CSV data repository
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass and code is formatted
+6. Commit your changes (following the commit message guidelines)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+## Acknowledgments
+
+- [Oryx](https://www.oryxspioenkop.com/) for documenting equipment losses
+- [scarnecchia](https://github.com/scarnecchia) for the R script and data processing
+- All contributors who help improve this library
