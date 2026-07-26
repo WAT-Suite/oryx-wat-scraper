@@ -14,7 +14,7 @@ from oryx_wat_scraper.exceptions import (
 )
 from oryx_wat_scraper.models import EquipmentEntry, SystemEntry
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "OryxScraper",

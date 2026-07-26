@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-26
+
 ### Added
 - `category` field on `EquipmentEntry`, carrying the Oryx section heading
   ("Tanks") alongside the specific model ("T-62M")
