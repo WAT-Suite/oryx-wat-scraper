@@ -150,48 +150,80 @@ def test_get_equipment_data():
     scraper.close()
 
 
-def test_get_daily_counts():
+def test_get_daily_counts(sample_html):
     """Test public API: get_daily_counts."""
-    from oryx_wat_scraper.models import EquipmentEntry
-
     scraper = OryxScraper()
 
-    # Mock the internal method
-    with patch.object(scraper, "_scrape_equipment_entries") as mock_scrape:
-        mock_scrape.return_value = [
-            EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
-            EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
-        ]
-
+    # Mock at the IO boundary so the real parsing path is exercised.
+    with patch.object(scraper, "_fetch_page", return_value=sample_html):
         daily_counts = scraper.get_daily_counts(countries=["russia"])
 
-        assert len(daily_counts) == 1
-        assert daily_counts[0]["country"] == "russia"
-        assert daily_counts[0]["equipment_type"] == "T-62M"
-        assert daily_counts[0]["destroyed"] == 2
+    assert {row["country"] for row in daily_counts} == {"russia"}
+
+    t62m = next(row for row in daily_counts if row["equipment_type"] == "T-62M")
+    assert t62m["destroyed"] == 2
+    assert t62m["captured"] == 1
+    assert t62m["type_total"] == 3
+    assert t62m["date_recorded"] == scraper.current_date
 
     scraper.close()
 
 
-def test_get_totals_by_type():
+def test_get_totals_by_type(sample_html):
     """Test public API: get_totals_by_type."""
-    from oryx_wat_scraper.models import EquipmentEntry
-
     scraper = OryxScraper()
 
-    # Mock the internal method
-    with patch.object(scraper, "_scrape_equipment_entries") as mock_scrape:
-        mock_scrape.return_value = [
-            EquipmentEntry("russia", "T-62M", "destroyed"),
-            EquipmentEntry("russia", "T-62M", "destroyed"),
-        ]
-
+    with patch.object(scraper, "_fetch_page", return_value=sample_html):
         totals = scraper.get_totals_by_type(countries=["russia"])
 
-        assert len(totals) == 1
-        assert totals[0]["country"] == "russia"
-        assert totals[0]["type"] == "T-62M"
-        assert totals[0]["destroyed"] == 2
-        assert totals[0]["total"] == 2
+    assert {row["country"] for row in totals} == {"russia"}
+
+    t62m = next(row for row in totals if row["type"] == "T-62M")
+    assert t62m["destroyed"] == 2
+    assert t62m["captured"] == 1
+    assert t62m["total"] == 3
+
+    scraper.close()
+
+
+def test_get_category_totals(sample_html):
+    """Category-level totals are what the API's EquipmentType filter matches on."""
+    scraper = OryxScraper()
+
+    with patch.object(scraper, "_fetch_page", return_value=sample_html):
+        totals = scraper.get_category_totals()
+
+    by_key = {(row["country"], row["category"]): row for row in totals}
+    assert by_key[("russia", "Tanks")]["total"] == 4
+    assert by_key[("russia", "Aircraft")]["damaged"] == 1
+    assert by_key[("ukraine", "Tanks")]["captured"] == 1
+
+    scraper.close()
+
+
+def test_get_system_entries(sample_html):
+    """System-level entries are the model-level detail behind each category."""
+    scraper = OryxScraper()
+
+    with patch.object(scraper, "_fetch_page", return_value=sample_html):
+        systems = scraper.get_system_entries(countries=["ukraine"])
+
+    assert {s.country for s in systems} == {"ukraine"}
+    assert {s.system for s in systems} == {"T-72AV"}
+    assert sorted(s.status for s in systems) == ["abandoned", "captured"]
+
+    scraper.close()
+
+
+def test_scrape_fetches_page_once(sample_html):
+    """All four aggregates come from a single fetch, not one per country."""
+    scraper = OryxScraper()
+
+    with patch.object(scraper, "_fetch_page", return_value=sample_html) as mock_fetch:
+        data = scraper.scrape()
+
+    mock_fetch.assert_called_once()
+    assert data["total_entries"] == 8
+    assert {"daily_count", "totals_by_type", "category_daily_count", "category_totals"} <= set(data)
 
     scraper.close()

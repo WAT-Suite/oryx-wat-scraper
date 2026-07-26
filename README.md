@@ -123,6 +123,42 @@ ukraine,T-72,45,2,8,0,55
 }
 ```
 
+## Data model: categories vs. systems
+
+Oryx nests its losses four levels deep:
+
+```
+Russia                    <- country
+  Tanks                   <- category
+    T-62M                 <- model, a.k.a. "system"
+      (1, destroyed)      <- one documented loss, with an evidence link
+```
+
+Both middle levels are useful, so both are exposed:
+
+| Level | Example | Methods |
+| --- | --- | --- |
+| Category | `Tanks` | `get_category_daily_counts()`, `get_category_totals()` |
+| Model / system | `T-62M` | `get_daily_counts()`, `get_totals_by_type()`, `get_totals_by_system()` |
+| Individual loss | `(1, destroyed)` | `get_equipment_data()`, `get_system_entries()` |
+
+The model-level methods keep the `oryx_data` CSV column names so existing
+pipelines keep working; the category-level methods are the ones to filter on
+when you want "all tank losses" rather than "all T-62M losses".
+
+```python
+from oryx_wat_scraper import OryxScraper
+
+with OryxScraper() as scraper:
+    # "Tanks", "Aircraft", ... - the level dashboards filter on
+    for row in scraper.get_category_totals(countries=["russia"]):
+        print(row["category"], row["total"])
+
+    # Individual losses, each with its evidence URL
+    for entry in scraper.get_system_entries(countries=["russia"]):
+        print(entry.system, entry.category, entry.status, entry.url)
+```
+
 ## API Reference
 
 ### `OryxScraper`
@@ -131,15 +167,27 @@ Main scraper class.
 
 #### Methods
 
+- `get_equipment_data(country: str = 'russia') -> list[EquipmentEntry]`: Individual losses for one country
+- `get_daily_counts(countries: List[str] | None = None) -> list[dict]`: Per-model daily counts (`oryx_data` format)
+- `get_totals_by_type(countries: List[str] | None = None) -> list[dict]`: Per-model totals (`oryx_data` format)
+- `get_category_daily_counts(countries: List[str] | None = None) -> list[dict]`: Per-category daily counts
+- `get_category_totals(countries: List[str] | None = None) -> list[dict]`: Per-category totals
+- `get_system_entries(countries: List[str] | None = None) -> list[SystemEntry]`: Individual system-level losses
+- `get_totals_by_system(countries: List[str] | None = None) -> list[dict]`: Per-system totals, keyed `system`
 - `scrape(countries: List[str] | None = None) -> Dict`: Scrape data for specified countries
 - `scrape_to_csv(output_dir: str = 'outputfiles') -> Dict`: Scrape and save to CSV files
 - `scrape_to_json(output_file: str | None = None, indent: int = 2) -> str`: Scrape and return/save as JSON
 - `close()`: Close the HTTP client
 
+`AsyncOryxScraper` exposes the same methods as coroutines.
+
 ### Models
 
-- `EquipmentEntry`: Individual equipment entry with status
-- `SystemEntry`: Individual system entry with status
+- `EquipmentEntry`: One documented loss — `country`, `equipment_type` (model), `category`, `status`, `url`, `date_recorded`
+- `SystemEntry`: One documented loss at system level — `country`, `system`, `status`, `origin`, `category`, `url`, `date_recorded`
+
+> `SystemEntry.origin` (country of origin) is not published by Oryx and is left
+> empty; enrich it from another source if you need it.
 
 ### Exceptions
 

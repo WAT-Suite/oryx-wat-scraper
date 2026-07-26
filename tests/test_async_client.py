@@ -85,39 +85,52 @@ async def test_async_get_equipment_data():
 
 
 @pytest.mark.asyncio
-async def test_async_get_daily_counts():
+async def test_async_get_daily_counts(sample_html):
     """Test public API: async get_daily_counts."""
     async with AsyncOryxScraper() as scraper:
-        # Mock the internal method
-        with patch.object(scraper, "_scrape_equipment_entries") as mock_scrape:
-            mock_scrape.return_value = [
-                EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
-                EquipmentEntry("russia", "T-62M", "destroyed", date_recorded="2024-01-15"),
-            ]
-
+        # Mock at the IO boundary so the real parsing path is exercised.
+        with patch.object(scraper, "_fetch_page", AsyncMock(return_value=sample_html)):
             daily_counts = await scraper.get_daily_counts(countries=["russia"])
 
-            assert len(daily_counts) == 1
-            assert daily_counts[0]["country"] == "russia"
-            assert daily_counts[0]["equipment_type"] == "T-62M"
-            assert daily_counts[0]["destroyed"] == 2
+        assert {row["country"] for row in daily_counts} == {"russia"}
+
+        t62m = next(row for row in daily_counts if row["equipment_type"] == "T-62M")
+        assert t62m["destroyed"] == 2
+        assert t62m["captured"] == 1
+        assert t62m["type_total"] == 3
 
 
 @pytest.mark.asyncio
-async def test_async_get_totals_by_type():
+async def test_async_get_totals_by_type(sample_html):
     """Test public API: async get_totals_by_type."""
     async with AsyncOryxScraper() as scraper:
-        # Mock the internal method
-        with patch.object(scraper, "_scrape_equipment_entries") as mock_scrape:
-            mock_scrape.return_value = [
-                EquipmentEntry("russia", "T-62M", "destroyed"),
-                EquipmentEntry("russia", "T-62M", "destroyed"),
-            ]
-
+        with patch.object(scraper, "_fetch_page", AsyncMock(return_value=sample_html)):
             totals = await scraper.get_totals_by_type(countries=["russia"])
 
-            assert len(totals) == 1
-            assert totals[0]["country"] == "russia"
-            assert totals[0]["type"] == "T-62M"
-            assert totals[0]["destroyed"] == 2
-            assert totals[0]["total"] == 2
+        t62m = next(row for row in totals if row["type"] == "T-62M")
+        assert t62m["country"] == "russia"
+        assert t62m["destroyed"] == 2
+        assert t62m["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_async_get_category_totals(sample_html):
+    """Async client must produce the same category aggregates as the sync one."""
+    async with AsyncOryxScraper() as scraper:
+        with patch.object(scraper, "_fetch_page", AsyncMock(return_value=sample_html)):
+            totals = await scraper.get_category_totals()
+
+    by_key = {(row["country"], row["category"]): row for row in totals}
+    assert by_key[("russia", "Tanks")]["total"] == 4
+    assert by_key[("ukraine", "Tanks")]["abandoned"] == 1
+
+
+@pytest.mark.asyncio
+async def test_async_get_system_entries(sample_html):
+    """Async client must produce system-level entries too."""
+    async with AsyncOryxScraper() as scraper:
+        with patch.object(scraper, "_fetch_page", AsyncMock(return_value=sample_html)):
+            systems = await scraper.get_system_entries(countries=["russia"])
+
+    assert {s.system for s in systems} == {"T-62M", "T-54-3M", "Su-34"}
+    assert all(s.origin == "" for s in systems)

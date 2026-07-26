@@ -7,48 +7,59 @@ Based on the R script approach from: https://github.com/scarnecchia/scrape_oryx
 import csv
 import json
 import os
-import re
-from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
 import httpx
-from bs4 import BeautifulSoup
 
-from oryx_wat_scraper.exceptions import (
-    OryxScraperNetworkError,
-    OryxScraperParseError,
-)
-from oryx_wat_scraper.models import EquipmentEntry
+from oryx_wat_scraper import parsing
+from oryx_wat_scraper.exceptions import OryxScraperNetworkError
+from oryx_wat_scraper.models import EquipmentEntry, SystemEntry
+
+DAILY_COUNT_FIELDS = [
+    "country",
+    "equipment_type",
+    "destroyed",
+    "abandoned",
+    "captured",
+    "damaged",
+    "type_total",
+    "date_recorded",
+]
+
+TOTALS_BY_TYPE_FIELDS = [
+    "country",
+    "type",
+    "destroyed",
+    "abandoned",
+    "captured",
+    "damaged",
+    "total",
+]
 
 
 class OryxScraper:
     """
     Scraper for Oryx equipment loss data, matching the R script approach.
 
-    The R script (scrape_oryx) uses rvest to:
-    1. Parse HTML structure from the blog post
-    2. Extract individual equipment entries with status indicators
-    3. Track equipment by country (Russia/Ukraine)
-    4. Generate time-series and aggregate CSV files
+    Oryx publishes losses as ``<country> -> <category> -> <model> -> <entry>``,
+    e.g. ``Russia`` -> ``Tanks`` -> ``T-62M`` -> ``(1, destroyed)``. Both the
+    category and the model level are exposed:
+
+    - :meth:`get_daily_counts` / :meth:`get_totals_by_type` group by model and
+      keep the ``oryx_data`` CSV format.
+    - :meth:`get_category_daily_counts` / :meth:`get_category_totals` group by
+      category, the level dashboards usually filter on.
+    - :meth:`get_system_entries` returns individual losses with evidence URLs.
 
     Example:
         ```python
         from oryx_wat_scraper import OryxScraper
 
-        scraper = OryxScraper()
-
-        # Get equipment data for a country
-        entries = scraper.get_equipment_data(country="russia")
-
-        # Get daily counts
-        daily_counts = scraper.get_daily_counts(countries=["russia", "ukraine"])
-
-        # Get totals by type
-        totals = scraper.get_totals_by_type(country="russia")
-
-        # Or use the convenience methods
-        scraper.scrape_to_csv('output')
+        with OryxScraper() as scraper:
+            entries = scraper.get_equipment_data(country="russia")
+            totals = scraper.get_category_totals()
+            scraper.scrape_to_csv('output')
         ```
     """
 
@@ -96,212 +107,36 @@ class OryxScraper:
     def _parse_equipment_line(
         self, line: str, country: str, category: str, html_line: str | None = None
     ) -> list[EquipmentEntry]:
-        """
-        Parse an equipment line (internal method).
-        '154 T-62M: (1, destroyed) (2, destroyed) ... (1, captured)'
-
-        The R script extracts individual numbered entries from HTML links.
-        Each numbered link represents one piece of equipment with a status.
-
-        Returns list of EquipmentEntry objects.
-        """
-        entries: list[EquipmentEntry] = []
-
-        # Extract equipment name and total count
-        match = re.match(r"^(\d+)\s+(.+?)\s*:", line.strip())
-        if not match:
-            return entries
-
-        total_count = int(match.group(1))
-        equipment_name = match.group(2).strip()
-
-        # If we have HTML, parse the links to get individual entries
-        if html_line:
-            # Find all links with numbers - these represent individual equipment pieces
-            link_pattern = r'<a[^>]*href="([^"]*)"[^>]*>\((\d+),\s*(destroyed|captured|abandoned|damaged)\)</a>'
-            link_matches = re.finditer(link_pattern, html_line, re.IGNORECASE)
-
-            for link_match in link_matches:
-                url = link_match.group(1)
-                status = link_match.group(3).lower()
-
-                entries.append(
-                    EquipmentEntry(
-                        country=country.lower(),
-                        equipment_type=equipment_name,
-                        status=status,
-                        url=url if url.startswith("http") else None,
-                        date_recorded=self.current_date,
-                    )
-                )
-
-        # Fallback: parse from text if no HTML
-        if not entries:
-            # Extract all status indicators with their counts
-            status_pattern = (
-                r"\((\d+(?:\s*,\s*\d+)*)\s*,\s*(destroyed|captured|abandoned|damaged)\)"
-            )
-            status_matches = re.finditer(status_pattern, line, re.IGNORECASE)
-
-            for status_match in status_matches:
-                numbers_str = status_match.group(1)
-                status = status_match.group(2).lower()
-
-                # Handle "1, 2, 3" format - count the numbers
-                numbers = re.findall(r"\d+", numbers_str)
-                count = len(numbers)
-
-                for _ in range(count):
-                    entries.append(
-                        EquipmentEntry(
-                            country=country.lower(),
-                            equipment_type=equipment_name,
-                            status=status,
-                            date_recorded=self.current_date,
-                        )
-                    )
-
-        # If still no entries but we have a count, assume all destroyed
-        if not entries and total_count > 0:
-            for _ in range(total_count):
-                entries.append(
-                    EquipmentEntry(
-                        country=country.lower(),
-                        equipment_type=equipment_name,
-                        status="destroyed",
-                        date_recorded=self.current_date,
-                    )
-                )
-
-        return entries
-
-    def _scrape_equipment_entries(self, country: str = "russia") -> list[EquipmentEntry]:
-        """
-        Scrape all equipment entries for a country (internal method).
-        The R script uses rvest to parse HTML structure and extract individual entries.
-        """
-        html_content = self._fetch_page()
-        soup = BeautifulSoup(html_content, "html.parser")
-
-        # Find the main content (Blogger/Blogspot structure)
-        content = (
-            soup.find("div", class_="post-body")
-            or soup.find("div", class_="post")
-            or soup.find("article")
-            or soup.find("body")
-        )
-
-        if not content:
-            raise OryxScraperParseError("Could not find content area in HTML")
-
-        entries = []
-        current_category = None
-        in_country_section = False
-        country_lower = country.lower()
-
-        # Find all elements that might contain equipment data
-        for element in content.find_all(["p", "li", "div"]):
-            text = element.get_text(strip=True)
-            html_str = str(element)
-
-            if not text:
-                continue
-
-            # Detect country section header
-            if country_lower in text.lower() and any(
-                word in text.lower() for word in ["total", "losses"]
-            ):
-                in_country_section = True
-                continue
-
-            # Check if we've moved to another country section
-            if in_country_section:
-                if "ukraine" in text.lower() and country_lower == "russia":
-                    break
-                if "russia" in text.lower() and country_lower == "ukraine":
-                    break
-
-            # Detect category headers
-            category_match = re.search(r"^([^(]+?)\s*\((\d+)", text, re.IGNORECASE)
-            if category_match:
-                current_category = category_match.group(1).strip()
-                continue
-
-            # Parse equipment lines
-            if in_country_section and current_category:
-                equipment_match = re.match(r"^(\d+)\s+(.+?)\s*:", text)
-                if equipment_match:
-                    equipment_entries = self._parse_equipment_line(
-                        text, country, current_category, html_str
-                    )
-                    entries.extend(equipment_entries)
-
-        return entries
+        """Parse a single loss line into one entry per loss (internal method)."""
+        return parsing.parse_equipment_line(line, country, category, html_line, self.current_date)
 
     def _generate_daily_count_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
-        """
-        Generate daily_count.csv format (internal method):
-        country, equipment_type, destroyed, abandoned, captured, damaged, type_total, date_recorded
-        """
-        grouped: dict[tuple[str, str, str], dict[str, int]] = defaultdict(
-            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
-        )
-
-        for entry in entries:
-            key = (
-                entry.country,
-                entry.equipment_type,
-                entry.date_recorded or self.current_date,
-            )
-            grouped[key][entry.status] += 1
-
-        csv_data = []
-        for (country, eq_type, date), counts in grouped.items():
-            total = sum(counts.values())
-            csv_data.append(
-                {
-                    "country": country,
-                    "equipment_type": eq_type,
-                    "destroyed": counts["destroyed"],
-                    "abandoned": counts["abandoned"],
-                    "captured": counts["captured"],
-                    "damaged": counts["damaged"],
-                    "type_total": total,
-                    "date_recorded": date,
-                }
-            )
-
-        return csv_data
+        """Aggregate by country, model and date (internal method)."""
+        return parsing.generate_daily_count(entries, self.current_date)
 
     def _generate_totals_by_type_csv(self, entries: list[EquipmentEntry]) -> list[dict[str, Any]]:
+        """Aggregate by country and model (internal method)."""
+        return parsing.generate_totals_by_type(entries)
+
+    def _scrape_equipment_entries(self, country: str = "russia") -> list[EquipmentEntry]:
+        """Scrape all equipment entries for a single country (internal method)."""
+        country_lower = country.lower()
+        entries = parsing.parse_entries(self._fetch_page(), self.current_date)
+        return [entry for entry in entries if entry.country == country_lower]
+
+    def _collect_entries(self, countries: list[str] | None) -> list[EquipmentEntry]:
         """
-        Generate totals_by_type.csv format (internal method):
-        country, type, destroyed, abandoned, captured, damaged, total
+        Scrape entries for every requested country (internal method).
+
+        The page carries all countries, so it is fetched and parsed once and the
+        result filtered, rather than re-fetching per country.
         """
-        grouped: dict[tuple[str, str], dict[str, int]] = defaultdict(
-            lambda: {"destroyed": 0, "abandoned": 0, "captured": 0, "damaged": 0}
-        )
+        if countries is None:
+            countries = ["russia", "ukraine"]
 
-        for entry in entries:
-            key = (entry.country, entry.equipment_type)
-            grouped[key][entry.status] += 1
-
-        csv_data = []
-        for (country, eq_type), counts in grouped.items():
-            total = sum(counts.values())
-            csv_data.append(
-                {
-                    "country": country,
-                    "type": eq_type,
-                    "destroyed": counts["destroyed"],
-                    "abandoned": counts["abandoned"],
-                    "captured": counts["captured"],
-                    "damaged": counts["damaged"],
-                    "total": total,
-                }
-            )
-
-        return csv_data
+        wanted = {country.lower() for country in countries}
+        entries = parsing.parse_entries(self._fetch_page(), self.current_date)
+        return [entry for entry in entries if entry.country in wanted]
 
     def get_equipment_data(self, country: str = "russia") -> list[EquipmentEntry]:
         """
@@ -315,90 +150,124 @@ class OryxScraper:
 
         Example:
             ```python
-            from oryx_wat_scraper import OryxScraper
-
             scraper = OryxScraper()
             entries = scraper.get_equipment_data(country="russia")
             for entry in entries:
-                print(f"{entry.equipment_type}: {entry.status}")
+                print(f"{entry.category}/{entry.equipment_type}: {entry.status}")
             ```
         """
         return self._scrape_equipment_entries(country)
 
     def get_daily_counts(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
-        Get daily count data aggregated by country, equipment type, and date.
+        Get daily count data aggregated by country, model and date.
+
+        Matches the ``oryx_data`` ``daily_count.csv`` format. For the broader
+        category level, see :meth:`get_category_daily_counts`.
 
         Args:
             countries: List of countries to scrape (default: ['russia', 'ukraine'])
 
         Returns:
-            List of dictionaries with daily count data:
-            - country: Country name
-            - equipment_type: Equipment type
-            - destroyed: Number destroyed
-            - abandoned: Number abandoned
-            - captured: Number captured
-            - damaged: Number damaged
-            - type_total: Total for this type
-            - date_recorded: Date of recording
-
-        Example:
-            ```python
-            from oryx_wat_scraper import OryxScraper
-
-            scraper = OryxScraper()
-            daily_counts = scraper.get_daily_counts(countries=["russia"])
-            for count in daily_counts:
-                print(f"{count['equipment_type']}: {count['destroyed']} destroyed")
-            ```
+            List of dictionaries with keys: country, equipment_type, destroyed,
+            abandoned, captured, damaged, type_total, date_recorded
         """
-        if countries is None:
-            countries = ["russia", "ukraine"]
-
-        all_entries = []
-        for country in countries:
-            entries = self._scrape_equipment_entries(country)
-            all_entries.extend(entries)
-
-        return self._generate_daily_count_csv(all_entries)
+        return parsing.generate_daily_count(self._collect_entries(countries), self.current_date)
 
     def get_totals_by_type(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         """
-        Get total counts aggregated by country and equipment type.
+        Get total counts aggregated by country and model.
+
+        Matches the ``oryx_data`` ``totals_by_type.csv`` format.
 
         Args:
             countries: List of countries to scrape (default: ['russia', 'ukraine'])
 
         Returns:
-            List of dictionaries with totals by type:
-            - country: Country name
-            - type: Equipment type
-            - destroyed: Total destroyed
-            - abandoned: Total abandoned
-            - captured: Total captured
-            - damaged: Total damaged
-            - total: Grand total
+            List of dictionaries with keys: country, type, destroyed, abandoned,
+            captured, damaged, total
+        """
+        return parsing.generate_totals_by_type(self._collect_entries(countries))
+
+    def get_category_daily_counts(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
+        """
+        Get daily counts aggregated by country, Oryx category and date.
+
+        The category-level counterpart to :meth:`get_daily_counts`: groups on
+        the Oryx section heading ("Tanks") rather than the model ("T-62M").
+
+        Args:
+            countries: List of countries to scrape (default: ['russia', 'ukraine'])
+
+        Returns:
+            List of dictionaries with keys: country, category, destroyed,
+            abandoned, captured, damaged, category_total, date_recorded
 
         Example:
             ```python
-            from oryx_wat_scraper import OryxScraper
-
             scraper = OryxScraper()
-            totals = scraper.get_totals_by_type(countries=["russia"])
-            for total in totals:
-                print(f"{total['type']}: {total['total']} total losses")
+            for count in scraper.get_category_daily_counts(countries=["russia"]):
+                print(f"{count['category']}: {count['category_total']} losses")
             ```
         """
-        if countries is None:
-            countries = ["russia", "ukraine"]
+        return parsing.generate_category_daily_count(
+            self._collect_entries(countries), self.current_date
+        )
 
-        all_entries = []
-        for country in countries:
-            entries = self._scrape_equipment_entries(country)
-            all_entries.extend(entries)
+    def get_category_totals(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
+        """
+        Get total counts aggregated by country and Oryx category.
 
-        return self._generate_totals_by_type_csv(all_entries)
+        Args:
+            countries: List of countries to scrape (default: ['russia', 'ukraine'])
+
+        Returns:
+            List of dictionaries with keys: country, category, destroyed,
+            abandoned, captured, damaged, total
+        """
+        return parsing.generate_category_totals(self._collect_entries(countries))
+
+    def get_system_entries(self, countries: list[str] | None = None) -> list[SystemEntry]:
+        """
+        Get individual system-level loss entries.
+
+        A "system" is a specific equipment model ("T-62M") rather than a
+        category ("Tanks"). Each entry is one documented loss, carrying its
+        status and — where Oryx links one — the evidence URL.
+
+        ``origin`` is left empty: Oryx does not publish a country of origin per
+        system, so it is the caller's job to enrich it from another source.
+
+        Args:
+            countries: List of countries to scrape (default: ['russia', 'ukraine'])
+
+        Returns:
+            List of SystemEntry objects
+
+        Example:
+            ```python
+            scraper = OryxScraper()
+            for system in scraper.get_system_entries(countries=["russia"]):
+                print(f"{system.system} ({system.category}): {system.status}")
+            ```
+        """
+        return parsing.to_system_entries(self._collect_entries(countries), self.current_date)
+
+    def get_totals_by_system(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
+        """
+        Get total counts aggregated by country and system (model).
+
+        The same data as :meth:`get_totals_by_type`, with the ``type`` key
+        renamed to ``system`` to match the system-level vocabulary.
+
+        Args:
+            countries: List of countries to scrape (default: ['russia', 'ukraine'])
+
+        Returns:
+            List of dictionaries with keys: country, system, destroyed,
+            abandoned, captured, damaged, total
+        """
+        return parsing.generate_totals_by_system(self._collect_entries(countries))
 
     def scrape(self, countries: list[str] | None = None) -> dict:
         """
@@ -411,24 +280,18 @@ class OryxScraper:
         Returns:
             Dictionary with scraped data and CSV-ready structures
         """
-        if countries is None:
-            countries = ["russia", "ukraine"]
-
-        all_entries = []
-
-        for country in countries:
-            entries = self._scrape_equipment_entries(country)
-            all_entries.extend(entries)
-
-        daily_count = self._generate_daily_count_csv(all_entries)
-        totals_by_type = self._generate_totals_by_type_csv(all_entries)
+        all_entries = self._collect_entries(countries)
 
         return {
             "url": self.BASE_URL,
             "date_scraped": self.current_date,
             "total_entries": len(all_entries),
-            "daily_count": daily_count,
-            "totals_by_type": totals_by_type,
+            "daily_count": parsing.generate_daily_count(all_entries, self.current_date),
+            "totals_by_type": parsing.generate_totals_by_type(all_entries),
+            "category_daily_count": parsing.generate_category_daily_count(
+                all_entries, self.current_date
+            ),
+            "category_totals": parsing.generate_category_totals(all_entries),
         }
 
     def _save_csv(self, data: list[dict], filename: str, fieldnames: list[str]):
@@ -452,27 +315,15 @@ class OryxScraper:
 
         data = self.scrape()
 
-        # Save daily_count.csv
         self._save_csv(
             data["daily_count"],
             os.path.join(output_dir, "daily_count.csv"),
-            [
-                "country",
-                "equipment_type",
-                "destroyed",
-                "abandoned",
-                "captured",
-                "damaged",
-                "type_total",
-                "date_recorded",
-            ],
+            DAILY_COUNT_FIELDS,
         )
-
-        # Save totals_by_type.csv
         self._save_csv(
             data["totals_by_type"],
             os.path.join(output_dir, "totals_by_type.csv"),
-            ["country", "type", "destroyed", "abandoned", "captured", "damaged", "total"],
+            TOTALS_BY_TYPE_FIELDS,
         )
 
         return data
